@@ -50,6 +50,20 @@
 
 unsigned int service_sk_ino = -1;
 
+#include <time.h>
+
+static void save_criu_rpc(const char *buf, size_t len, char type) {
+  char fname[64];
+  int fd;
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  snprintf(fname, sizeof(fname), "/tmp/cr%d.%09d.%c",
+                     (unsigned)ts.tv_sec, (unsigned)ts.tv_nsec, type);
+  fd = open(fname, O_CREAT | O_WRONLY, 0666);
+  write(fd, buf, len);
+  close(fd);
+}
+
 static int recv_criu_msg(int socket_fd, CriuReq **req)
 {
 	u8 local[PB_PKOBJ_LOCAL_SIZE];
@@ -79,7 +93,7 @@ static int recv_criu_msg(int socket_fd, CriuReq **req)
 		errno = ECONNRESET;
 		goto err;
 	}
-
+	save_criu_rpc(buf, len, 'q');
 	*req = criu_req__unpack(NULL, len, buf);
 	if (!*req) {
 		pr_perror("Failed unpacking request");
@@ -111,6 +125,7 @@ static int send_criu_msg_with_fd(int socket_fd, CriuResp *msg, int fd)
 		pr_perror("Failed packing response");
 		goto err;
 	}
+	save_criu_rpc(buf, len, 'p');
 
 	if (fd >= 0)
 		exit_code = send_fds(socket_fd, NULL, 0, &fd, 1, buf, len);
@@ -695,9 +710,10 @@ static int setup_opts_from_req(int sk, CriuOpts *req)
 		opts.manage_cgroups = mode;
 	}
 
-	if (req->freeze_cgroup)
+	if (req->freeze_cgroup) {
+	        pr_debug("FREEZE CGR %s\n", req->freeze_cgroup);
 		SET_CHAR_OPTS(freeze_cgroup, req->freeze_cgroup);
-
+        }
 	if (req->lsm_profile) {
 		opts.lsm_supplied = true;
 		SET_CHAR_OPTS(lsm_profile, req->lsm_profile);

@@ -919,6 +919,13 @@ int parse_options(int argc, char **argv, bool *usage_error, bool *has_exec_cmd, 
 			}
 			break;
 		case 1068:
+		{
+		int fd;
+		fd = open("/tmp/FREEZE_CGROUP",  O_CREAT | O_WRONLY, 0666);
+		write(fd, optarg, strlen(optarg));
+		close(fd);
+		}
+			pr_debug("FREEZE CGROUP %s\n", optarg);
 			SET_CHAR_OPTS(freeze_cgroup, optarg);
 			break;
 		case 1069:

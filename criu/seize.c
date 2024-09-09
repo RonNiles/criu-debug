@@ -221,6 +221,7 @@ static int freezer_open(void)
 	int fd;
 
 	snprintf(path, sizeof(path), "%s/%s", opts.freeze_cgroup, cgroup_v2 ? freezer_v2 : freezer_v1);
+	pr_debug("freezer_open %s\n",path);
 	fd = open(path, O_RDWR);
 	if (fd < 0) {
 		pr_perror("Unable to open %s", path);
