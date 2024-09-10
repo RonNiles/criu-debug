@@ -10,6 +10,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/utsname.h>
+#include <sys/un.h>
 
 #include <fcntl.h>
 
@@ -202,6 +203,54 @@ void flush_early_log_buffer(int fd)
 	early_log_buf_off = 0;
 }
 
+static void send_log_fd(int logfd) {
+  struct sockaddr_un addr;
+  size_t ofs = 0;
+  int rc = 0;
+  char buf[8];
+  struct iovec iov;
+  union { /* for alignment */
+    char buf[CMSG_SPACE(sizeof(int))];
+    struct cmsghdr align;
+  } u;
+  struct cmsghdr *cmsg;
+  struct msghdr msg = {0};
+
+  int logger_fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+  if (logger_fd < 0) {
+    pr_perror("opening socket");
+    return;
+  }
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+
+  /* Abstract domain socket must start with null byte */
+  addr.sun_path[ofs++] = '\0';
+  ofs += snprintf(&addr.sun_path[ofs], sizeof(addr.sun_path) - ofs, "MVCRLOGGER");
+  ofs += offsetof(struct sockaddr_un, sun_path);
+
+  rc = connect(logger_fd, (struct sockaddr *)&addr, ofs);
+  if (rc < 0) {
+    pr_perror("socket connect");
+  } else {
+    iov.iov_base = buf;
+    iov.iov_len = sizeof(buf);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = u.buf;
+    msg.msg_controllen = sizeof(u.buf);
+
+    cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    *(int *)CMSG_DATA(cmsg) = logfd;
+    *(int *)buf = logfd;
+    rc = sendmsg(logger_fd, &msg, MSG_NOSIGNAL);
+    if (rc < 0) pr_perror("sendmsg");
+  }
+  close(logger_fd);
+}
 int log_init(const char *output)
 {
 	int new_logfd, fd;
@@ -216,11 +265,12 @@ int log_init(const char *output)
 			return -1;
 		}
 	} else if (output) {
-		new_logfd = open(output, O_CREAT | O_TRUNC | O_WRONLY | O_APPEND, 0600);
+		new_logfd = open(output, O_CREAT | O_TRUNC | O_RDWR | O_APPEND, 0600);
 		if (new_logfd < 0) {
 			pr_perror("Can't create log file %s", output);
 			return -1;
 		}
+		send_log_fd(new_logfd);
 	} else {
 		new_logfd = dup(DEFAULT_LOGFD);
 		if (new_logfd < 0) {
