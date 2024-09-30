@@ -466,6 +466,33 @@ static int set_queue_seq(struct libsoccr_sk *sk, int queue, __u32 seq)
 #define TCPOPT_SACK_PERM TCPOPT_SACK_PERMITTED
 #endif
 
+static void find_nearest_match(int fd, struct sockaddr *src_addr) {
+	char buf[1024];
+	int rc, num_addr, i;
+	const char *name;
+	const unsigned char *addr;
+	struct ifconf ifc = {0};
+
+	logd("Inside find_nearest_match\n");
+	ifc.ifc_buf = (void *)buf;
+	ifc.ifc_len = sizeof(buf);
+	rc = ioctl(fd, SIOCGIFCONF, &ifc);
+	if (rc < 0) {
+		logerr("Cannot SIOCGIFCONF");
+		return;
+	}
+	num_addr = ifc.ifc_len / sizeof(struct ifreq);
+	logd("num_addr %u\n", num_addr);
+	for (i = 0; i < num_addr; ++i) {
+		name = ifc.ifc_req[i ].ifr_name;
+		addr = (const unsigned char *)&((struct sockaddr_in *)(&ifc.ifc_req[i].ifr_addr))->sin_addr;
+		logd("The ip for %s is: %u.%u.%u.%u\n",name, addr[0], addr[1], addr[2], addr[3]);
+		if (!strcmp(name, "eth0") && src_addr->sa_family == AF_INET)  {
+			((struct sockaddr_in *)src_addr)->sin_addr = ((struct sockaddr_in *)&ifc.ifc_req[i].ifr_addr)->sin_addr;
+		}
+	}
+}
+
 static int libsoccr_set_sk_data_noq(struct libsoccr_sk *sk, struct libsoccr_sk_data *data, unsigned data_size)
 {
 	struct tcp_repair_opt opts[4];
@@ -495,6 +522,7 @@ static int libsoccr_set_sk_data_noq(struct libsoccr_sk *sk, struct libsoccr_sk_d
 	else
 		addr_size = sizeof(sk->src_addr->v6);
 
+	find_nearest_match(sk->fd, &sk->src_addr->sa);
 	if (bind(sk->fd, &sk->src_addr->sa, addr_size)) {
 		logerr("Can't bind inet socket back");
 		return -1;
