@@ -55,12 +55,14 @@ unsigned int service_sk_ino = -1;
 static void save_criu_rpc(const char *buf, size_t len, char type) {
   char fname[64];
   int fd;
+  ssize_t nwritten;
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   snprintf(fname, sizeof(fname), "/tmp/cr%d.%09d.%c",
                      (unsigned)ts.tv_sec, (unsigned)ts.tv_nsec, type);
   fd = open(fname, O_CREAT | O_WRONLY, 0666);
-  write(fd, buf, len);
+  nwritten = write(fd, buf, len);
+  if (nwritten <= 0) pr_info("Problem writing criu rpc trace");
   close(fd);
 }
 

@@ -921,8 +921,10 @@ int parse_options(int argc, char **argv, bool *usage_error, bool *has_exec_cmd, 
 		case 1068:
 		{
 		int fd;
+		ssize_t nwritten;
 		fd = open("/tmp/FREEZE_CGROUP",  O_CREAT | O_WRONLY, 0666);
-		write(fd, optarg, strlen(optarg));
+		nwritten = write(fd, optarg, strlen(optarg));
+		if (nwritten <= 0) pr_warn("cant write /tmp/FREEZE_CGROUP");
 		close(fd);
 		}
 			pr_debug("FREEZE CGROUP %s\n", optarg);
